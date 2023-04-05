@@ -2,15 +2,18 @@
 lock "~> 3.17.1"
 
 set :application, "speakvoice"
+
 set :repo_url, "git@github.com:juwpan/telegrambot.git"
 
-set :deploy_to, '/home/juwpan/telegram_bot'
+set :deploy_to, '/telegram_bot'
 
 set :branch, 'main'
 
 append :linked_files, '.env'
 
-set :ssh_options, { :forward_agent => true }
+after 'deploy:restart', 'resque:restart'
+
+# set :ssh_options, { :forward_agent => true }
 
 # Default branch is :master
 # ask :branch, `git rev-parse --abbrev-ref HEAD`.chomp
