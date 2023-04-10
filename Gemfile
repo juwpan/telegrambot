@@ -6,9 +6,11 @@ ruby '3.1.2'
 
 gem 'telegram-bot-ruby', '~> 1.0'
 gem 'dotenv-rails'
-gem 'sinatra'
 gem 'puma'
-gem 'audiomator'
+gem 'tempfile'
+gem 'yandex_cloud'
+gem 'aws-sdk-s3'
+gem 'fog-aws'
 
 gem "capistrano"
 gem "capistrano-bundler"
