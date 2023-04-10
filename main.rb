@@ -3,6 +3,7 @@ require 'net/http'
 require 'dotenv/load'
 require 'tempfile'
 require 'aws-sdk-s3'
+require 'puma'
 require 'faraday'
 require 'json'
 
@@ -36,7 +37,7 @@ Telegram::Bot::Client.run(TOKEN) do |bot|
       response = Net::HTTP.get_response(uri)
 
       # Создание временного файла в памяти и запись в него содержимого файла
-      file = Tempfile.new('voice_file', 'ogg')
+      file = Tempfile.new('voice_file')
       file.binmode
       file.write(response.body)
       file.rewind
