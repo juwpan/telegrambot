@@ -4,11 +4,11 @@ require 'dotenv/load'
 require 'tempfile'
 require 'aws-sdk-s3'
 require 'puma'
-require 'faraday'
 require 'json'
 
 require_relative 'lib/send_yandex'
 require_relative 'lib/response_yandex'
+require_relative 'lib/uri_parse'
 
 TOKEN = ENV['TOKEN']
 TOKEN_YANDEX = ENV['TOKEN_YANDEX']
@@ -33,8 +33,7 @@ Telegram::Bot::Client.run(TOKEN) do |bot|
 
       # Получение данных файла
       voice_url = "https://api.telegram.org/file/bot#{TOKEN}/#{file_path}"
-      uri = URI(voice_url)
-      response = Net::HTTP.get_response(uri)
+      response = UriParse.get_file_data(voice_url)
 
       # Создание временного файла в памяти и запись в него содержимого файла
       file = Tempfile.new('voice_file')
@@ -52,8 +51,7 @@ Telegram::Bot::Client.run(TOKEN) do |bot|
 
       # Получение ссылки на загруженный файл
       object_url = "https://storage.yandexcloud.net/#{BUCKET}/#{object_key}"
-      uri = URI(object_url)
-      response = Net::HTTP.get_response(uri)
+      response = UriParse.get_file_data(object_url)
 
       headers = { 'Authorization': "Api-key #{TOKEN_YANDEX}" }
       body = {
