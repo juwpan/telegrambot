@@ -1,3 +1,4 @@
+# Спарсит данные с урл адреса
 module UriParse
   def self.get_file_data(url)
     uri = URI(url)
