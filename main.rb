@@ -1,97 +1,64 @@
-require 'telegram/bot'
-require 'net/http'
-require 'dotenv/load'
-require 'tempfile'
-require 'aws-sdk-s3'
-require 'puma'
-require 'json'
+require "telegram/bot"
+require "net/http"
+require "dotenv/load"
+require "tempfile"
+require "aws-sdk-s3"
+require "puma"
+require "json"
 
-require_relative 'lib/send_yandex'
-require_relative 'lib/response_yandex'
-require_relative 'lib/uri_parse'
+require_relative "lib/yandex_service"
+require_relative "lib/telegram_service"
+require_relative "lib/response_yandex"
+require_relative "lib/result"
 
-TOKEN = ENV['TOKEN']
-TOKEN_YANDEX = ENV['TOKEN_YANDEX']
-FOLDER_ID = ENV['FOLDER_ID']
-IAM_TOKEN = ENV['IAM_TOKEN']
-BUCKET = ENV['BUCKET']
-EDPOINT = 'https://transcribe.api.cloud.yandex.net/speech/stt/v2/longRunningRecognize'
+TOKEN = ENV["TOKEN"]
+TOKEN_YANDEX = ENV["TOKEN_YANDEX"]
+FOLDER_ID = ENV["FOLDER_ID"]
+IAM_TOKEN = ENV["IAM_TOKEN"]
+BUCKET = ENV["BUCKET"]
 
-s3 = Aws::S3::Resource.new(
-  region: 'ru-central1',
-  access_key_id: ENV['YC_AK_ID'],
-  secret_access_key: ENV['YC_SECRET'],
-  endpoint: 'https://storage.yandexcloud.net',
-)
+OBJECT_KEY = "voice.ogg"
+OBJECT_URL = "https://storage.yandexcloud.net/#{BUCKET}/#{OBJECT_KEY}"
 
 Telegram::Bot::Client.run(TOKEN) do |bot|
   bot.listen do |message|
     if message.voice
-      # Извлечение голосового файла
-      file_id = message.voice.file_id
-      file_path = bot.api.get_file(file_id: message.voice.file_id).fetch('result').fetch('file_path')
+      # Создание эксемпляра телеграм сервиса для возврата записанного голосового файла
+      telegram_bot = TelegramService.new(TOKEN, bot, message)
 
-      # Получение данных файла
-      voice_url = "https://api.telegram.org/file/bot#{TOKEN}/#{file_path}"
-      response = UriParse.get_file_data(voice_url)
+      # Данные голосовго файла из телеграмма
+      response = telegram_bot.listen
 
       # Создание временного файла в памяти и запись в него содержимого файла
-      file = Tempfile.new('voice_file')
+      file = Tempfile.new("voice_file")
       file.binmode
       file.write(response.body)
       file.rewind
-  
+
+      # Создание эксемпляра яндекс для реализации загрузки файлов в хранилище и получение ссылки
+      # из этого хранилища для передачи в yandex speechkit
+      yandex = YandexService.new(TOKEN_YANDEX, BUCKET, file, OBJECT_URL)
+
       # Загрузка файла на Yandex Object Storage
-      object_key = "voice.ogg"
-      s3.bucket(BUCKET).object(object_key).put(body: file)
-  
+      yandex.load_file_yandex_storage(OBJECT_KEY)
+
       # Удаление временного файла из памяти
       file.close
       file.unlink
 
-      # Получение ссылки на загруженный файл
-      object_url = "https://storage.yandexcloud.net/#{BUCKET}/#{object_key}"
-      response = UriParse.get_file_data(object_url)
-
-      headers = { 'Authorization': "Api-key #{TOKEN_YANDEX}" }
-      body = {
-        config: {
-          specification: {
-            languageCode: 'ru-RU',
-            model: 'general',
-            profanityFilter: 'true',
-            audioEncoding: 'OGG_OPUS',
-            sampleRateHertz: 48000,
-            audioChannelCount: 1,
-            rawResults: true,
-            literature_text: true
-          }
-        },
-        audio: {
-          uri: object_url
-        }
-      }
-
       # Получения ответа от сервиса
-      response = SendYandex.send_yandex_request(URI(EDPOINT), body, headers)
-      task_id = response['id']
+      response = yandex.get_response_yandex
+      task_id = response["id"]
 
-      # Запись данных из файла
+      # Ссылка на записаное аудио
       edpoint_voice = "https://operation.api.cloud.yandex.net/operations/#{task_id}"
 
-      # Авторизация почему то через раз
-      result = ResponseYandex.get_response_form_object(URI(edpoint_voice), headers)
+      # Авторизация(почему то через раз)
+      result_yandex = ResponseYandex.get_response_form_object(URI(edpoint_voice), yandex.headers)
 
-      recognized_text = ''
-
-      if result['response']['chunks'].nil?
-        bot.api.send_message(chat_id: message.chat.id, text: 'Речь не распознана или ошибки на сервере')
-      else
-        result['response']['chunks'].each do |word|
-          recognized_text += word['alternatives'][0]['text']
-        end
-        bot.api.send_message(chat_id: message.chat.id, text: recognized_text)
-      end
+      # Результат
+      result = Result.new(TOKEN, bot, message)
+      result.result(result_yandex)
     end
   end
 end
