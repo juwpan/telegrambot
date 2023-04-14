@@ -8,7 +8,6 @@ require "json"
 
 require_relative "lib/yandex_service"
 require_relative "lib/telegram_service"
-require_relative "lib/response_yandex"
 require_relative "lib/result"
 
 TOKEN = ENV["TOKEN"]
@@ -38,24 +37,24 @@ Telegram::Bot::Client.run(TOKEN) do |bot|
       # Создание эксемпляра яндекс для реализации загрузки файлов в хранилище и получение ссылки
       # из этого хранилища для передачи в yandex speechkit
       yandex = YandexService.new(TOKEN_YANDEX, BUCKET, file, OBJECT_URL)
-
+      
       # Загрузка файла на Yandex Object Storage
       yandex.load_file_yandex_storage(OBJECT_KEY)
-
+      
       # Удаление временного файла из памяти
       file.close
       file.unlink
-
+      
       # Получения ответа от сервиса
       response = yandex.get_response_yandex
       task_id = response["id"]
 
       # Ссылка на записаное аудио
       edpoint_voice = "https://operation.api.cloud.yandex.net/operations/#{task_id}"
-
+      
       # Авторизация(почему то через раз)
-      result_yandex = ResponseYandex.get_response_form_object(URI(edpoint_voice), yandex.headers)
-
+      result_yandex = yandex.get_response_form_object(URI(edpoint_voice))
+  
       # Результат
       result = Result.new(TOKEN, bot, message)
       result.result(result_yandex)

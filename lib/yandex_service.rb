@@ -1,17 +1,16 @@
-require_relative 'uri_parse'
+require_relative "service"
 
 EDPOINT = "https://transcribe.api.cloud.yandex.net/speech/stt/v2/longRunningRecognize"
 
-class YandexService
-  def initialize(token_yandex, bucket, file, object_url)
-    @token_yandex = token_yandex
+class YandexService < Service
+  attr_reader :headers
+
+  def initialize(*args, bucket, file, object_url)
+    super(*args)
     @bucket = bucket
     @file = file
     @object_url = object_url
-  end
-
-  def headers
-    { 'Authorization': "Api-key #{@token_yandex}" }
+    @headers = { 'Authorization': "Api-key #{@token}" }
   end
   
   # Загрузка файла на Yandex Object Storage
@@ -21,11 +20,31 @@ class YandexService
 
   # Получения ответа от сервиса после отправки звукого файла
   def get_response_yandex
-    response = send_yandex_request(URI(EDPOINT), body, headers)
+    send_yandex_request(URI(EDPOINT))
+  end
+
+  # Когда произойдет подключение подключится к серверу яндекс то вернет данные текста из голоса
+  def get_response_form_object(url)
+    response = Net::HTTP.get_response(url, @headers)
+    result = JSON.parse(response.body)
+
+    while result['done'] != true
+      response = Net::HTTP.get_response(url, @headers)
+      result = JSON.parse(response.body)
+      p 'No connect'
+      sleep 1
+    end
+    result
   end
   
   private
-  
+
+  # Отправка запроса звукого файла на распознование в яндекс
+  def send_yandex_request(url)
+    response = Net::HTTP.post(url, body.to_json, @headers)
+    JSON.parse(response.body)
+  end
+
   def body
     {
       config: {
@@ -44,12 +63,6 @@ class YandexService
         uri: @object_url
       }
     }
-  end
-
-  # Отправка запроса звукого файла на распознование в яндекс
-  def send_yandex_request(url, body, headers)
-    response = Net::HTTP.post(url, body.to_json, headers)
-    JSON.parse(response.body)
   end
 
   # Взаимодействия с сервисом яндекс хранилища
